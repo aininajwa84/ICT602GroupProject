@@ -50,9 +50,11 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onBeaconChange() {
     final beacon = Provider.of<BeaconService>(context, listen: false);
     if (beacon.isInside) {
+      print('[DEBUG] Enter detected, starting session and welcome flow');
       _startSession();
       _showWelcomeFlow();
     } else {
+      print('[DEBUG] Exit detected, ending session and exit flow');
       _endSession();
       _showExitFlow();
     }
@@ -93,8 +95,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _showExitFlow() async {
-    final notif = NotificationService();
-    await notif.showNotification(title: 'Thank you', body: 'Thanks for visiting the library.');
+  print('[DEBUG] Showing exit notification');
+  final notif = NotificationService();
+  await notif.showNotification(title: 'Thank you', body: 'Thanks for visiting the library.');
   }
 
   Future<void> _showRulesIfNeeded() async {
@@ -110,9 +113,9 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: const [
-              Text('• No food'),
-              Text('• Keep quiet'),
-              Text('• Put phones on silent'),
+              Text('• No food allowed'),
+              Text('• Plese keep quiet'),
+              Text('• Put your phone on silent'),
             ],
           ),
           actions: [
@@ -154,64 +157,151 @@ class _HomeScreenState extends State<HomeScreen> {
     final now = DateFormat.jm().format(DateTime.now());
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Library Assistant')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Status: $status', style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 8),
-            Text('Time: $now'),
-            const SizedBox(height: 16),
-            if (beacon.isInside) ...[
-              Text('Session: ${_formatDuration(_elapsed)}', style: const TextStyle(fontSize: 24)),
-              const SizedBox(height: 8),
+      appBar: AppBar(
+        title: const Text('PTAR UiTM Jasin'),
+        backgroundColor: Colors.blueGrey,
+        elevation: 2,
+      ),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Card(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 4,
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            beacon.isInside ? Icons.meeting_room : Icons.exit_to_app,
+                            color: beacon.isInside ? Colors.green : Colors.red,
+                            size: 32,
+                          ),
+                          const SizedBox(width: 12),
+                          Text('Status: $status', style: Theme.of(context).textTheme.headlineSmall),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(Icons.access_time, color: Colors.blueGrey),
+                          const SizedBox(width: 8),
+                          Text('Time: $now'),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      if (beacon.isInside) ...[
+                        Row(
+                          children: [
+                            Icon(Icons.timer, color: Colors.blueGrey),
+                            const SizedBox(width: 8),
+                            Text('Session: ${_formatDuration(_elapsed)}', style: const TextStyle(fontSize: 24)),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      Row(
+                        children: [
+                          Icon(Icons.person, color: Colors.blueGrey),
+                          const SizedBox(width: 8),
+                          Text('Matric: ${_matric.isEmpty ? 'Not checked in' : _matric}'),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueGrey,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      icon: const Icon(Icons.person_outline),
+                      label: const Text('Check-in / Profile'),
+                      onPressed: () async {
+                        final r = await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CheckinScreen()));
+                        if (r == true) _loadMatric();
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.teal,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      icon: const Icon(Icons.play_circle_outline),
+                      label: const Text('Simulate Enter/Exit'),
+                      onPressed: () async {
+                        final b = Provider.of<BeaconService>(context, listen: false);
+                        b.toggleMock();
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 32),
+              Card(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text('Quick Actions', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 8,
+                        children: [
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            icon: const Icon(Icons.rule),
+                            label: const Text('Show Rules'),
+                            onPressed: () async {
+                              final prefs = await SharedPreferences.getInstance();
+                              await prefs.setBool('hide_rules', false);
+                              _showRulesIfNeeded();
+                            },
+                          ),
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.purple,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            icon: const Icon(Icons.notifications_active),
+                            label: const Text('Send Silent Reminder'),
+                            onPressed: () async {
+                              final notif = NotificationService();
+                              await notif.showNotification(title: 'Silent Reminder', body: 'Please switch to silent mode');
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
-            Text('Matric: ${_matric.isEmpty ? 'Not checked in' : _matric}'),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                ElevatedButton(
-                  onPressed: () async {
-                    final r = await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CheckinScreen()));
-                    if (r == true) _loadMatric();
-                  },
-                  child: const Text('Check-in / Profile'),
-                ),
-                const SizedBox(width: 12),
-                ElevatedButton(
-                  onPressed: () async {
-                    // toggle mock enter/exit for testing
-                    final b = Provider.of<BeaconService>(context, listen: false);
-                    b.toggleMock();
-                  },
-                  child: const Text('Simulate Enter/Exit'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const Text('Quick actions:'),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: [
-                ElevatedButton(
-                    onPressed: () async {
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setBool('hide_rules', false);
-                      _showRulesIfNeeded();
-                    },
-                    child: const Text('Show Rules')),
-                ElevatedButton(
-                    onPressed: () async {
-                      final notif = NotificationService();
-                      await notif.showNotification(title: 'Silent Reminder', body: 'Please switch to silent mode');
-                    },
-                    child: const Text('Send Silent Reminder')),
-              ],
-            )
-          ],
+          ),
         ),
       ),
     );

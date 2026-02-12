@@ -7,7 +7,13 @@ import 'screens/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  try {
+    await Firebase.initializeApp();
+  } catch (e) {
+    // ignore: avoid_print
+    print('Firebase initialization failed: '
+        '${e.runtimeType}: $e');
+  }
   runApp(const MyApp());
 }
 
