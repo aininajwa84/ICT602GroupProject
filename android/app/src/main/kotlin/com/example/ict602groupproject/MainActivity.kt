@@ -1,4 +1,4 @@
-package com.example.ict602_project
+package com.example.ict602groupproject
 
 import io.flutter.embedding.android.FlutterActivity
 

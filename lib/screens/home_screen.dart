@@ -26,12 +26,22 @@ class _HomeScreenState extends State<HomeScreen> {
   Duration _elapsed = Duration.zero;
   String _matric = '';
 
+  //  ✅ NEW: For break reminders
+  Timer? _breakReminderTimer;
+  int _lastBreakReminderMinutes = 0;
+  
+  // ✅ NEW: For time spent reminders (15min, 30min, 45min, 60min)
+  Timer? _timeSpentTimer;
+  int _lastTimeSpentReminderMinutes = 0;
+
   @override
   void initState() {
     super.initState();
     _loadMatric();
     final notif = NotificationService();
     notif.init();
+    notif.requestPermissions();
+
     // listen to beacon changes
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final beacon = Provider.of<BeaconService>(context, listen: false);
@@ -68,6 +78,48 @@ class _HomeScreenState extends State<HomeScreen> {
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       setState(() => _elapsed += const Duration(seconds: 1));
     });
+
+    // ✅ NEW: Start break reminder timer (check every minute)
+    _breakReminderTimer?.cancel();
+    _breakReminderTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      _checkBreakReminders();
+    });
+    
+    // ✅ NEW: Start time spent reminder timer (check every 15 minutes)
+    _timeSpentTimer?.cancel();
+    _timeSpentTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      _checkTimeSpentReminders();
+    });
+  }
+
+  // ✅ NEW: Check break reminders (every 30 minutes)
+  void _checkBreakReminders() async {
+    if (!mounted) return;
+    
+    final minutes = _elapsed.inMinutes;
+    
+    // Remind every 30 minutes
+    if (minutes >= 30 && minutes % 30 == 0 && minutes > _lastBreakReminderMinutes) {
+      _lastBreakReminderMinutes = minutes;
+      final notif = NotificationService();
+      await notif.showBreakReminder(minutes);
+    }
+  }
+
+  // ✅ NEW: Check time spent reminders (15, 30, 45, 60 minutes)
+  void _checkTimeSpentReminders() async {
+    if (!mounted) return;
+    
+    final minutes = _elapsed.inMinutes;
+    final reminderTimes = [15, 30, 45, 60, 75, 90, 105, 120];
+    
+    // ✅ Trigger bila minutes = 14, 29, 44, 59...
+  if (reminderTimes.contains(minutes + 1) && minutes > _lastTimeSpentReminderMinutes) {
+    _lastTimeSpentReminderMinutes = minutes;
+    final notif = NotificationService();
+    await notif.showTimeSpentReminder(minutes + 1);  // Send 15, 30, 45...
+    debugPrint('✅ ${minutes + 1} minute reminder sent at ${minutes}m ${_elapsed.inSeconds % 60}s');
+    }
   }
 
   Future<void> _endSession() async {
@@ -75,6 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_matric.isNotEmpty) {
       final now = DateTime.now();
       final session = Session(matric: _matric, start: now.subtract(_elapsed), end: now);
+
       // Save session to Firestore
       await FirebaseFirestore.instance.collection('sessions').add({
         'matric': session.matric,
@@ -90,14 +143,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _showWelcomeFlow() async {
     final notif = NotificationService();
-    await notif.showNotification(title: 'Welcome to Perpustakaan Tun Abdul Razak UiTM', body: 'Please switch your phone to silent.');
+    await notif.showNotification(id: 1, title: 'Welcome to Perpustakaan Tun Abdul Razak UiTM', body: 'Please switch your phone to silent.');
     _showRulesIfNeeded();
   }
 
   Future<void> _showExitFlow() async {
   debugPrint('[DEBUG] Showing exit notification');
   final notif = NotificationService();
-  await notif.showNotification(title: 'Thank you', body: 'Thanks for visiting the library.');
+
+  String durationText = _formatDuration(_elapsed);
+  await notif.showNotification(id: 2, title: 'Thank you', body: 'Thanks for visiting the library. You spent $durationText in the library.');
   }
 
   Future<void> _showRulesIfNeeded() async {
@@ -157,7 +212,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final beacon = Provider.of<BeaconService>(context);
     final isInside = beacon.isInside;
     final status = isInside ? 'Inside' : 'Outside';
-    final now = DateFormat.jm().format(DateTime.now());
+    final currentTime = DateFormat.jm().format(DateTime.now());
 
     return Scaffold(
       appBar: AppBar(
@@ -219,7 +274,7 @@ class _HomeScreenState extends State<HomeScreen> {
                      Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _buildStatusItem(Icons.access_time, 'Time', now),
+                        _buildStatusItem(Icons.access_time, 'Time', currentTime),
                         if (isInside)
                           _buildStatusItem(Icons.timer, 'Session', _formatDuration(_elapsed)),
                       ],
@@ -227,6 +282,27 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
+
+              // ✅ NEW: Break suggestion when studying > 30 minutes
+              if (isInside && _elapsed.inMinutes >= 30)
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade100,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '☕ Time for a break!',
+                      style: GoogleFonts.poppins(
+                        color: Colors.amber.shade900,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              
               const SizedBox(height: 16),
               
               
@@ -251,6 +327,70 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               
+              // ✅ NEW: Today's Summary (if any sessions today)
+              if (_matric.isNotEmpty)
+                FutureBuilder<QuerySnapshot>(
+                  future: FirebaseFirestore.instance
+                      .collection('sessions')
+                      .where('matric', isEqualTo: _matric)
+                      .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(
+                          DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day)))
+                      .get(),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasData) {
+                      int totalSeconds = 0;
+                      for (var doc in snapshot.data!.docs) {
+                        totalSeconds += ((doc['duration_seconds'] ?? 0) as int);
+                      }
+                      
+                      final totalHours = totalSeconds ~/ 3600;
+                      final totalMinutes = (totalSeconds % 3600) ~/ 60;
+                      
+                      if (totalSeconds > 0) {
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Card(
+                            color: Colors.blue.shade50,
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.today, color: Colors.blue.shade700),
+                                  const SizedBox(width: 12),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Today\'s Study Time',
+                                        style: TextStyle(
+                                          color: Colors.blue.shade900,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      Text(
+                                        totalHours > 0 
+                                            ? '$totalHours hour${totalHours > 1 ? 's' : ''} $totalMinutes minutes'
+                                            : '$totalMinutes minutes',
+                                        style: TextStyle(
+                                          color: Colors.blue.shade900,
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                    }
+                    return const SizedBox.shrink();
+                  },
+                ),
+                
+
               const SizedBox(height: 24),
               Text(
                 'Quick Actions',
@@ -279,22 +419,44 @@ class _HomeScreenState extends State<HomeScreen> {
                   _buildActionButton(
                     context,
                     icon: Icons.notifications_active,
-                    label: 'Silent Reminder',
+                    label: 'Silent Mode Reminder',
                     color: Colors.purple,
                     onTap: () async {
                       final notif = NotificationService();
-                      await notif.showNotification(title: 'Silent Reminder', body: 'Please switch to silent mode');
+                      await notif.showSilentModeReminder();
                     },
                   ),
+
+                  // ✅ BREAK REMINDER BUTTON (TAMBAH INI!)
                   _buildActionButton(
-                     context,
-                     icon: Icons.bug_report,
-                     label: 'Simulate Toggle',
-                     color: Colors.teal,
-                     onTap: () {
-                        final b = Provider.of<BeaconService>(context, listen: false);
-                        b.toggleMock();
-                     }
+                    context,
+                    icon: Icons.coffee,
+                    label: 'Break Reminder',
+                    color: Colors.brown,
+                    onTap: () async {
+                      if (_elapsed.inMinutes >= 30) {
+                      final notif = NotificationService();
+                      await notif.showBreakReminder(_elapsed.inMinutes);
+                    } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('You need to study at least 30 minutes before a break reminder'),
+                        behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+          ),
+
+                  _buildActionButton(
+                    context,
+                    icon: Icons.bug_report,
+                    label: 'Simulate Toggle',
+                    color: Colors.teal,
+                    onTap: () {
+                      final b = Provider.of<BeaconService>(context, listen: false);
+                      b.toggleMock();
+                    },
                   ),
                 ],
               ),
@@ -365,3 +527,4 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
+
